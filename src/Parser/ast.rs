@@ -60,7 +60,7 @@ pub enum Expr {
         col: Option<Box<Expr>>,
     }, // col for 2D arrays, the index exists for both 1D and 2D arrays but would be the row in a 2d array
     EOF {
-        filename: String,
+        filename: Box<Expr>,
     },
 }
 
@@ -259,7 +259,7 @@ impl Expr {
                     format!("{}[{}]", name, index.to_prefix())
                 }
             }
-            Expr::EOF { filename } => format!("EOF({})", filename),
+            Expr::EOF { filename } => format!("EOF({})", filename.to_prefix()),
         }
     }
 }
