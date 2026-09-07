@@ -195,9 +195,9 @@ fn builtin_lcase(args: &[Value]) -> Result<Option<Value>, CPSError> {
         return Err(arg_count_error("LCASE", 1, args.len()));
     }
 
-    let string = expect_string(&args[0], "LCASE", 1)?;
-    let result = string.to_lowercase();
-    Ok(Some(Value::String(result)))
+    let ch = expect_char(&args[0], "LCASE", 1)?;
+    let result = ch.to_lowercase().next().unwrap_or(ch);
+    Ok(Some(Value::Char(result)))
 }
 
 fn builtin_ucase(args: &[Value]) -> Result<Option<Value>, CPSError> {
@@ -205,9 +205,9 @@ fn builtin_ucase(args: &[Value]) -> Result<Option<Value>, CPSError> {
         return Err(arg_count_error("UCASE", 1, args.len()));
     }
 
-    let string = expect_string(&args[0], "UCASE", 1)?;
-    let result = string.to_uppercase();
-    Ok(Some(Value::String(result)))
+    let ch = expect_char(&args[0], "UCASE", 1)?;
+    let result = ch.to_uppercase().next().unwrap_or(ch);
+    Ok(Some(Value::Char(result)))
 }
 
 fn builtin_int(args: &[Value]) -> Result<Option<Value>, CPSError> {

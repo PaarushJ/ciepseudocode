@@ -301,7 +301,7 @@ impl Interpreter {
                 return_type,
                 body,
             } => self.evaluate_function(name, parameters, return_type.to_owned(), body),
-            Stmt::Call { name, arguments } => self.evaluate_call(name, arguments).map(|_| ()),
+            Stmt::Call { name, arguments } => self.evaluate_call(name, arguments, true).map(|_| ()),
             Stmt::Block(block) => block
                 .statements
                 .iter()
@@ -344,7 +344,7 @@ impl Interpreter {
 
     fn evaluate_assignment_stmt(
         &mut self,
-        identifier: &String,
+        identifier: &str,
         value: &Ast,
         array_index: &Option<(Box<Expr>, Option<Box<Expr>>)>,
     ) -> Result<(), CPSError> {
@@ -575,7 +575,7 @@ impl Interpreter {
         }
     }
 
-    fn find_actual_type(&self, val: &Value, identifier: &String) -> Result<Type, CPSError> {
+    fn find_actual_type(&self, val: &Value, identifier: &str) -> Result<Type, CPSError> {
         // Identifiers and functions are not assignable, so they keep their own messages
         match val {
             Value::Identifier(_) => Err(CPSError {
@@ -603,7 +603,7 @@ impl Interpreter {
 
     fn evaluate_for(
         &mut self,
-        identifier: &String,
+        identifier: &str,
         start: &Expr,
         end: &Expr,
         body: &BlockStmt,
@@ -1167,6 +1167,24 @@ impl Interpreter {
         Ok(())
     }
 
+    /// The filename an expression names, so a variable holding one works wherever a literal does.
+    fn evaluate_filename(&mut self, filename: &Expr, statement: &str) -> Result<String, CPSError> {
+        match self.evaluate_expr(filename)? {
+            Value::String(name) => Ok(name),
+            other => Err(CPSError {
+                error_type: ErrorType::Runtime,
+                message: format!(
+                    "Filename in {} statement must evaluate to a string, got: {:?}",
+                    statement, other
+                ),
+                hint: None,
+                line: 0,
+                column: 0,
+                source: None,
+            }),
+        }
+    }
+
     fn evaluate_open_file(
         &mut self,
         filename: &Box<Expr>,
@@ -1174,10 +1192,10 @@ impl Interpreter {
     ) -> Result<(), CPSError> {
         if let Some(ctx_rc) = self.replay_ctx.clone() {
             let filename_value = self.evaluate_expr(filename)?;
-            let filename_str =
-                match filename_value {
-                    Value::String(s) => s,
-                    other => return Err(CPSError {
+            let filename_str = match filename_value {
+                Value::String(s) => s,
+                other => {
+                    return Err(CPSError {
                         error_type: ErrorType::Runtime,
                         message: format!(
                             "Filename in OPENFILE statement must evaluate to a string, got: {:?}",
@@ -1187,8 +1205,9 @@ impl Interpreter {
                         line: 0,
                         column: 0,
                         source: None,
-                    }),
-                };
+                    })
+                }
+            };
             let ctx = ctx_rc.borrow();
             let mut vfs = ctx.virtual_fs.borrow_mut();
             match mode {
@@ -1270,10 +1289,10 @@ impl Interpreter {
     fn evaluate_close_file(&mut self, filename: &Box<Expr>) -> Result<(), CPSError> {
         if let Some(ctx_rc) = self.replay_ctx.clone() {
             let filename_value = self.evaluate_expr(filename)?;
-            let filename_str =
-                match filename_value {
-                    Value::String(s) => s,
-                    other => return Err(CPSError {
+            let filename_str = match filename_value {
+                Value::String(s) => s,
+                other => {
+                    return Err(CPSError {
                         error_type: ErrorType::Runtime,
                         message: format!(
                             "Filename in CLOSEFILE statement must evaluate to a string, got: {:?}",
@@ -1283,8 +1302,9 @@ impl Interpreter {
                         line: 0,
                         column: 0,
                         source: None,
-                    }),
-                };
+                    })
+                }
+            };
             let ctx = ctx_rc.borrow();
             let mut vfs = ctx.virtual_fs.borrow_mut();
             if let Some(vfile) = vfs.get_mut(&filename_str) {
@@ -1329,10 +1349,10 @@ impl Interpreter {
     ) -> Result<(), CPSError> {
         if let Some(ctx_rc) = self.replay_ctx.clone() {
             let filename_value = self.evaluate_expr(filename)?;
-            let filename_str =
-                match filename_value {
-                    Value::String(s) => s,
-                    other => return Err(CPSError {
+            let filename_str = match filename_value {
+                Value::String(s) => s,
+                other => {
+                    return Err(CPSError {
                         error_type: ErrorType::Runtime,
                         message: format!(
                             "Filename in WRITEFILE statement must evaluate to a string, got: {:?}",
@@ -1342,8 +1362,9 @@ impl Interpreter {
                         line: 0,
                         column: 0,
                         source: None,
-                    }),
-                };
+                    })
+                }
+            };
             let value_to_write = self.evaluate_expr(value)?;
             let line = value_to_write.to_output_string("write")?;
             let ctx = ctx_rc.borrow();
@@ -1637,34 +1658,48 @@ impl Interpreter {
     }
 
     /// Turns a type name written in the source into the type it was declared as.
-    fn resolve_type(&self, ty: &Type) -> Result<Type, CPSError> {
+    fn resolve_type(&mut self, ty: &Type) -> Result<Type, CPSError> {
         Ok(match ty {
             Type::Named(name) => {
-                let env = self.current_env.borrow();
-                env.find_type_of_named_type(name)?
+                let named = self.current_env.borrow().find_type_of_named_type(name)?;
+                named
             }
+            // bounds are worked out here, in the scope that declared them, so that two array types
+            // can later be compared as plain numbers
             Type::Array(arr) => Type::Array(ArrayType {
+                lower_bound: Box::new(self.resolve_bound(&arr.lower_bound, "lower")?),
+                upper_bound: Box::new(self.resolve_bound(&arr.upper_bound, "upper")?),
+                bounds_2d: match &arr.bounds_2d {
+                    Some((col_lower, col_upper)) => Some((
+                        Box::new(self.resolve_bound(col_lower, "column lower")?),
+                        Box::new(self.resolve_bound(col_upper, "column upper")?),
+                    )),
+                    None => None,
+                },
                 base_type: Box::new(self.resolve_type(&arr.base_type)?),
-                ..arr.to_owned()
             }),
             other => other.to_owned(),
         })
     }
 
+    fn resolve_bound(&mut self, expr: &Expr, what: &str) -> Result<Expr, CPSError> {
+        let bound = self.evaluate_bound(expr, what)?;
+        Ok(Expr::Literal(Value::Integer(bound)))
+    }
+
     fn resolve_parameters(
-        &self,
+        &mut self,
         parameters: &Vec<(String, Type, PassingValue)>,
     ) -> Result<Vec<(String, Type, PassingValue)>, CPSError> {
-        parameters
-            .iter()
-            .map(|(name, type_, passing_value)| {
-                Ok((
-                    name.to_owned(),
-                    self.resolve_type(type_)?,
-                    passing_value.to_owned(),
-                ))
-            })
-            .collect()
+        let mut resolved = Vec::with_capacity(parameters.len());
+        for (name, type_, passing_value) in parameters {
+            resolved.push((
+                name.to_owned(),
+                self.resolve_type(type_)?,
+                passing_value.to_owned(),
+            ));
+        }
+        Ok(resolved)
     }
 
     /// The value a variable of this type holds before anything is assigned to it.
@@ -1835,7 +1870,7 @@ impl Interpreter {
 
     fn evaluate_declaration_stmt(
         &mut self,
-        identifier: &String,
+        identifier: &str,
         type_: &Type,
     ) -> Result<(), CPSError> {
         let inital_value = self.default_value(type_)?;
@@ -1848,7 +1883,7 @@ impl Interpreter {
 
     fn evaluate_enum_declaration(
         &mut self,
-        identifier: &String,
+        identifier: &str,
         variants: &Vec<String>,
     ) -> Result<(), CPSError> {
         self.current_env
@@ -1858,7 +1893,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn evaluate_constant(&mut self, identifier: &String, value: &Value) -> Result<(), CPSError> {
+    fn evaluate_constant(&mut self, identifier: &str, value: &Value) -> Result<(), CPSError> {
         self.current_env
             .borrow_mut()
             .declare_constant(&identifier, value)?;
@@ -1867,14 +1902,14 @@ impl Interpreter {
 
     fn evaluate_procedure(
         &mut self,
-        identifier: &String,
+        identifier: &str,
         parameters: &Vec<(String, Type, PassingValue)>,
         body: &BlockStmt,
     ) -> Result<(), CPSError> {
         // self.evaluate_declaration_stmt(identifier, &Type::Function)?;
 
         // first check if procedure is a builtin
-        if BUILTIN_FUNCTIONS.contains(&identifier.as_str()) {
+        if BUILTIN_FUNCTIONS.contains(&identifier) {
             return Err(CPSError {
                 error_type: ErrorType::Runtime,
                 message: format!(
@@ -1906,11 +1941,80 @@ impl Interpreter {
         Ok(())
     }
 
+    /// return true for a function, false for a procedure
+    fn is_function(&self, identifier: &str) -> Result<bool, CPSError> {
+        let function = match self.current_env.borrow().get(identifier) {
+            Some(Value::Function(func)) => func,
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Undefined function: {}", identifier),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+        };
+
+        match function.return_type {
+            Some(_) => return Ok(true),
+            None => return Ok(false),
+        }
+    }
+
     fn evaluate_call(
         &mut self,
-        identifier: &String,
+        identifier: &str,
         arguments: &Vec<Expr>,
+        is_statement: bool, // check to see if it's a statement
+                            // if it is a statement, reject functions, otherwise, reject procedures
     ) -> Result<Value, CPSError> {
+        let is_builtin = BUILTIN_FUNCTIONS.contains(&identifier);
+        let is_function = if is_builtin {
+            true
+        } else {
+            self.is_function(identifier)?
+        };
+
+        if is_statement {
+            // if it is a builtin then reject as all builtins are functions (none r procedures)
+            if is_builtin {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Cannot call built-in function '{}' as a procedure", identifier),
+                    hint: Some("Built-in functions return a value. Use the function in an expression or assign its result to a variable.".to_string()),
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+
+            if is_function {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Cannot call function '{}' as a procedure", identifier),
+                    hint: Some("Functions return a value. Use the function in an expression or assign its result to a variable.".to_string()),
+                    line: 0,
+                    column: 0,
+                    source: None,
+
+                });
+            }
+        } else {
+            if !is_function {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Cannot use the procedure '{}' as a function as it does not return a value", identifier),
+                    hint: Some("Functions return a value and procedures do not. Use a function instead of a procedure in an expression or assign its result to a variable.".to_string()),
+                    line: 0,
+                    column: 0,
+                    source: None,
+
+                });
+            }
+        }
+
         if identifier == "RAND" {
             let rand_ctx = self.replay_ctx.as_ref().map(Rc::clone);
             if let Some(ctx_rc) = rand_ctx {
@@ -1935,7 +2039,8 @@ impl Interpreter {
                     return Ok(val);
                 }
                 let value =
-                    match crate::Inter::builtins::call_builtin(identifier.clone(), &arg_values)? {
+                    match crate::Inter::builtins::call_builtin(identifier.to_owned(), &arg_values)?
+                    {
                         Some(v) => v,
                         None => Value::Boolean(false),
                     };
@@ -1946,14 +2051,14 @@ impl Interpreter {
             }
         }
 
-        if BUILTIN_FUNCTIONS.contains(&identifier.as_str()) {
+        if is_builtin {
             let arg_values: Result<Vec<Value>, CPSError> = arguments
                 .iter()
                 .map(|arg| self.evaluate_expr(arg))
                 .collect();
 
             let arg_values = arg_values?;
-            return match crate::Inter::builtins::call_builtin(identifier.clone(), &arg_values)? {
+            return match crate::Inter::builtins::call_builtin(identifier.to_owned(), &arg_values)? {
                 Some(value) => Ok(value),
                 None => Ok(Value::Boolean(false)),
             };
@@ -2184,13 +2289,13 @@ impl Interpreter {
 
     fn evaluate_function(
         &mut self,
-        identifier: &String,
+        identifier: &str,
         parameters: &Vec<(String, Type, PassingValue)>,
         return_type: Type,
         body: &BlockStmt,
     ) -> Result<(), CPSError> {
         // first check if function is a builtin
-        if BUILTIN_FUNCTIONS.contains(&identifier.as_str()) {
+        if BUILTIN_FUNCTIONS.contains(&identifier) {
             return Err(CPSError {
                 error_type: ErrorType::Runtime,
                 message: format!("Cannot redefine builtin function: {}", identifier),
@@ -2218,9 +2323,11 @@ impl Interpreter {
         match expression {
             Expr::Binary(expr) => self.evaluate_binary(expr),
             Expr::Literal(value) => self.evaluate_literal(value),
-            Expr::Call { name, arguments } => self.evaluate_call(name, arguments),
+            Expr::Call { name, arguments } => self.evaluate_call(name, arguments, false),
             Expr::ArrayAccess { name, index, col } => self.evaluate_array_access(name, index, col),
             Expr::EOF { filename } => {
+                let filename = self.evaluate_filename(filename, "EOF")?;
+
                 if let Some(ctx_rc) = self.replay_ctx.clone() {
                     let ctx = ctx_rc.borrow();
                     let vfs = ctx.virtual_fs.borrow();
@@ -2236,7 +2343,7 @@ impl Interpreter {
                         source: None,
                     });
                 }
-                let is_eof = self.current_env.borrow().is_eof(filename)?;
+                let is_eof = self.current_env.borrow().is_eof(&filename)?;
                 Ok(Value::Boolean(is_eof))
             } // _ => {
               //     return Err(CPSError {
@@ -2253,7 +2360,7 @@ impl Interpreter {
 
     fn evaluate_array_access(
         &mut self,
-        name: &String,
+        name: &str,
         index: &Box<Expr>,
         col: &Option<Box<Expr>>,
     ) -> Result<Value, CPSError> {
@@ -2700,32 +2807,18 @@ fn check_if_type_can_be_converted(value: &Value, target_type: &Type) -> bool {
         (Value::Integer(_), Type::Real) => true,
         (Value::Date(_), Type::Date) => true,
         (Value::Enum { type_name: l1, .. }, Type::Enum(r1)) => l1 == r1,
-        (
-            Value::Array {
-                array,
-                lower_bound: _,
-                bounds_2d: _,
-            },
-            Type::Array(arr_type),
-        ) => {
-            match arr_type {
-                ArrayType {
-                    lower_bound: _,
-                    upper_bound: _,
-                    base_type,
-                    bounds_2d: _,
-                } => {
-                    if array.is_empty() {
-                        return true; // empty array can be converted
-                    }
-                    for element in array {
-                        if !check_if_type_can_be_converted(element, *&base_type) {
-                            return false;
-                        }
-                    }
-                    true
-                }
-            }
+        // a wrong-shaped array is never convertible, so the shape is settled first and only the
+        // element type is allowed to widen
+        (Value::Array { array, .. }, Type::Array(arr_type)) => {
+            let actual = match value.type_of() {
+                Ok(Type::Array(actual)) => actual,
+                _ => return false,
+            };
+
+            array_bounds_match(&actual, arr_type)
+                && array
+                    .iter()
+                    .all(|element| check_if_type_can_be_converted(element, &arr_type.base_type))
         }
         (Value::Real(_), Type::Integer) => {
             if let Value::Real(f) = value {
@@ -2734,6 +2827,27 @@ fn check_if_type_can_be_converted(value: &Value, target_type: &Type) -> bool {
                 false
             }
         }
+        _ => false,
+    }
+}
+
+/// Whether two array types are the same shape. Bounds rather than element counts, because
+/// ARRAY[0:1] and ARRAY[1:2] both hold two values but number them differently.
+fn array_bounds_match(a: &ArrayType, b: &ArrayType) -> bool {
+    let same = |x: &Expr, y: &Expr| match (x, y) {
+        (Expr::Literal(Value::Integer(l)), Expr::Literal(Value::Integer(r))) => l == r,
+        _ => false, // a bound that never got resolved to a number cannot be compared
+    };
+
+    if !same(&a.lower_bound, &b.lower_bound) || !same(&a.upper_bound, &b.upper_bound) {
+        return false;
+    }
+
+    match (&a.bounds_2d, &b.bounds_2d) {
+        (Some((a_lower, a_upper)), Some((b_lower, b_upper))) => {
+            same(a_lower, b_lower) && same(a_upper, b_upper)
+        }
+        (None, None) => true,
         _ => false,
     }
 }
@@ -2748,8 +2862,7 @@ fn check_if_types_match_exactly(actual: &Type, expected: &Type) -> bool {
         (Type::Date, Type::Date) => true,
         (Type::Enum(l1), Type::Enum(r1)) => l1 == r1,
         (Type::Array(a), Type::Array(b)) => {
-            a.bounds_2d.is_some() == b.bounds_2d.is_some()
-                && check_if_types_match_exactly(&a.base_type, &b.base_type)
+            array_bounds_match(a, b) && check_if_types_match_exactly(&a.base_type, &b.base_type)
         }
         _ => false,
     }

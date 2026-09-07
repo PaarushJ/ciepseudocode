@@ -201,21 +201,9 @@ impl Parser {
                 let name = token.lexeme.clone();
                 self.advance();
                 if name.to_uppercase() == "EOF" && self.peek(0).token_type == TokenType::LParen {
-                    // parse EOF("filename")
+                    // parse EOF(<filename>)
                     self.advance(); // consume '('
-                    let filename_expr = self.parse_expr(0)?;
-                    let filename_str = match ast_to_expr(filename_expr)? {
-                        Expr::Literal(Value::String(s)) => s,
-                        Expr::Literal(Value::Identifier(id)) => id,
-                        _ => return Err(CPSError {
-                            error_type: ErrorType::Syntax,
-                            message: "EOF argument must be a filename".to_string(),
-                            hint: None,
-                            line: token.line,
-                            column: token.column,
-                            source: Some(self.source.clone()),
-                        }),
-                    };
+                    let filename_expr = ast_to_expr(self.parse_expr(0)?)?;
                     let close = self.advance();
                     if close.token_type != TokenType::RParen {
                         return Err(CPSError {
@@ -227,7 +215,9 @@ impl Parser {
                             source: Some(self.source.clone()),
                         });
                     }
-                    return Ok(Ast::Expression(Expr::EOF { filename: filename_str }));
+                    return Ok(Ast::Expression(Expr::EOF {
+                        filename: Box::new(filename_expr),
+                    }));
                 } else if self.peek(0).token_type == TokenType::LParen {
                     self.parse_function_call_expr(name)
                 } else if self.peek(0).token_type == TokenType::LSquare {
@@ -715,6 +705,22 @@ impl Parser {
                 self.scope -= 1; // decrease scope after parsing case statement
                 break;
             }
+
+            // return an error if otherwise is not the last case
+            if otherwise.is_some() {
+                return Err(CPSError {
+                    error_type: ErrorType::Syntax,
+                    message: "Nothing can follow OTHERWISE in a CASE statement".to_string(),
+                    hint: Some(
+                        "OTHERWISE handles every value the cases above did not match, so it has to be the last one, just before ENDCASE."
+                        .to_string(),
+                    ),
+                    line: token.line,
+                    column: token.column,
+                    source: Some(self.source.clone()),
+                });
+            }
+
 
             // Check for OTHERWISE clause
             if token.token_type == TokenType::Otherwise {

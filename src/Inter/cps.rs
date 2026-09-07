@@ -483,6 +483,101 @@ impl Value {
     }
 }
 
+/// Where an element sits in the flat vec an array is stored in. `name` only names the array in error messages.
+pub fn flat_index(
+    name: &str,
+    index: usize,
+    col: Option<usize>,
+    lower_bound: usize,
+    bounds_2d: Option<(usize, usize)>,
+    length: usize,
+) -> Result<usize, CPSError> {
+    if index < lower_bound {
+        return Err(CPSError {
+            error_type: ErrorType::Runtime,
+            message: format!(
+                "Array index {} is below lower bound {} for '{}'",
+                index, lower_bound, name
+            ),
+            hint: Some(format!("Valid indices start from {}", lower_bound)),
+            line: 0,
+            column: 0,
+            source: None,
+        });
+    }
+
+    let flat = match bounds_2d {
+        Some((col_lb, col_ub)) => {
+            let col_idx = col.ok_or_else(|| CPSError {
+                error_type: ErrorType::Runtime,
+                message: format!("Missing column index for 2D array '{}'", name),
+                hint: Some("2D arrays require both row and column indices".to_string()),
+                line: 0,
+                column: 0,
+                source: None,
+            })?;
+
+            let col_count = col_ub - col_lb + 1;
+            let row_offset = index - lower_bound;
+            let col_offset = col_idx.checked_sub(col_lb).ok_or_else(|| CPSError {
+                error_type: ErrorType::Runtime,
+                message: format!(
+                    "Column index {} is below lower bound {} for '{}'",
+                    col_idx, col_lb, name
+                ),
+                hint: Some(format!("Valid column indices start from {}", col_lb)),
+                line: 0,
+                column: 0,
+                source: None,
+            })?;
+
+            if col_offset >= col_count {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Column index {} is out of bounds for '{}'", col_idx, name),
+                    hint: Some(format!(
+                        "Valid column indices range from {} to {}",
+                        col_lb, col_ub
+                    )),
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+
+            row_offset * col_count + col_offset
+        }
+        None => {
+            if col.is_some() {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("'{}' is a 1D array, so it takes one index", name),
+                    hint: Some(
+                        "Write A[i] for a 1D array; A[i, j] is only for a 2D one.".to_string(),
+                    ),
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+            index - lower_bound
+        }
+    };
+
+    if flat >= length {
+        return Err(CPSError {
+            error_type: ErrorType::Runtime,
+            message: format!("Array index out of bounds for '{}'", name),
+            hint: None,
+            line: 0,
+            column: 0,
+            source: None,
+        });
+    }
+
+    Ok(flat)
+}
+
 fn input_error(expected: &str, target: &str, got: &str) -> CPSError {
     CPSError {
         error_type: ErrorType::Runtime,
@@ -664,87 +759,10 @@ impl Environment {
                         lower_bound,
                         bounds_2d,
                     } => {
-                        let lower_bound = *lower_bound;
-                        let bounds_2d = *bounds_2d;
+                        let position =
+                            flat_index(name, index, col, *lower_bound, *bounds_2d, array.len())?;
 
-                        if index < lower_bound {
-                            return Err(CPSError {
-                                error_type: crate::errortype::ErrorType::Runtime,
-                                message: format!(
-                                    "Array index {} is below lower bound {} for '{}'",
-                                    index, lower_bound, name
-                                ),
-                                hint: Some(format!("Valid indices start from {}", lower_bound)),
-                                line: 0,
-                                column: 0,
-                                source: None,
-                            });
-                        }
-
-                        let flat_index = if let Some((col_lb, col_ub)) = bounds_2d {
-                            let col_idx = col.ok_or_else(|| CPSError {
-                                error_type: crate::errortype::ErrorType::Runtime,
-                                message: format!("Missing column index for 2D array '{}'", name),
-                                hint: Some(
-                                    "2D arrays require both row and column indices".to_string(),
-                                ),
-                                line: 0,
-                                column: 0,
-                                source: None,
-                            })?;
-
-                            let col_count = col_ub - col_lb + 1;
-                            let row_offset = index - lower_bound;
-                            let col_offset =
-                                col_idx.checked_sub(col_lb).ok_or_else(|| CPSError {
-                                    error_type: crate::errortype::ErrorType::Runtime,
-                                    message: format!(
-                                        "Column index {} is below lower bound {} for '{}'",
-                                        col_idx, col_lb, name
-                                    ),
-                                    hint: Some(format!(
-                                        "Valid column indices start from {}",
-                                        col_lb
-                                    )),
-                                    line: 0,
-                                    column: 0,
-                                    source: None,
-                                })?;
-
-                            if col_offset >= col_count {
-                                return Err(CPSError {
-                                    error_type: crate::errortype::ErrorType::Runtime,
-                                    message: format!(
-                                        "Column index {} is out of bounds for '{}'",
-                                        col_idx, name
-                                    ),
-                                    hint: Some(format!(
-                                        "Valid column indices range from {} to {}",
-                                        col_lb, col_ub
-                                    )),
-                                    line: 0,
-                                    column: 0,
-                                    source: None,
-                                });
-                            }
-
-                            row_offset * col_count + col_offset
-                        } else {
-                            index - lower_bound
-                        };
-
-                        if flat_index >= array.len() {
-                            return Err(CPSError {
-                                error_type: crate::errortype::ErrorType::Runtime,
-                                message: format!("Array index out of bounds for '{}'", name),
-                                hint: None,
-                                line: 0,
-                                column: 0,
-                                source: None,
-                            });
-                        }
-
-                        array[flat_index] = value;
+                        array[position] = value;
 
                         return Ok(());
                     }
@@ -800,78 +818,10 @@ impl Environment {
                     lower_bound,
                     bounds_2d,
                 } => {
-                    if index < lower_bound {
-                        return Err(CPSError {
-                            error_type: crate::errortype::ErrorType::Runtime,
-                            message: format!(
-                                "Array index {} is below lower bound {} for '{}'",
-                                index, lower_bound, name
-                            ),
-                            hint: Some(format!("Valid indices start from {}", lower_bound)),
-                            line: 0,
-                            column: 0,
-                            source: None,
-                        });
-                    }
+                    let position =
+                        flat_index(name, index, col, lower_bound, bounds_2d, array.len())?;
 
-                    let flat_index = if let Some((col_lb, col_ub)) = bounds_2d {
-                        let col_idx = col.ok_or_else(|| CPSError {
-                            error_type: crate::errortype::ErrorType::Runtime,
-                            message: format!("Missing column index for 2D array '{}'", name),
-                            hint: Some("2D arrays require both row and column indices".to_string()),
-                            line: 0,
-                            column: 0,
-                            source: None,
-                        })?;
-
-                        let col_count = col_ub - col_lb + 1;
-                        let row_offset = index - lower_bound;
-                        let col_offset = col_idx.checked_sub(col_lb).ok_or_else(|| CPSError {
-                            error_type: crate::errortype::ErrorType::Runtime,
-                            message: format!(
-                                "Column index {} is below lower bound {} for '{}'",
-                                col_idx, col_lb, name
-                            ),
-                            hint: Some(format!("Valid column indices start from {}", col_lb)),
-                            line: 0,
-                            column: 0,
-                            source: None,
-                        })?;
-
-                        if col_offset >= col_count {
-                            return Err(CPSError {
-                                error_type: crate::errortype::ErrorType::Runtime,
-                                message: format!(
-                                    "Column index {} is out of bounds for '{}'",
-                                    col_idx, name
-                                ),
-                                hint: Some(format!(
-                                    "Valid column indices range from {} to {}",
-                                    col_lb, col_ub
-                                )),
-                                line: 0,
-                                column: 0,
-                                source: None,
-                            });
-                        }
-
-                        row_offset * col_count + col_offset
-                    } else {
-                        index - lower_bound
-                    };
-
-                    if flat_index >= array.len() {
-                        return Err(CPSError {
-                            error_type: crate::errortype::ErrorType::Runtime,
-                            message: format!("Array index out of bounds for '{}'", name),
-                            hint: None,
-                            line: 0,
-                            column: 0,
-                            source: None,
-                        });
-                    }
-
-                    Ok(array[flat_index].clone())
+                    Ok(array[position].clone())
                 }
                 _ => Err(CPSError {
                     error_type: crate::errortype::ErrorType::Runtime,
