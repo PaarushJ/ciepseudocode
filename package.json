@@ -1,0 +1,11 @@
+{
+  "name": "ciepseudocode-ide",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser IDE for Cambridge (9618/0478) pseudocode, powered by the Rust interpreter compiled to WebAssembly.",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "build": "bash scripts/build.sh",
+    "examples": "node scripts/gen-examples.mjs"
+  }
+}

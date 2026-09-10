@@ -29,6 +29,8 @@ target
 *.sh
 # dont ignore install.sh
 !install.sh 
+# dont ignore the web build script
+!scripts/build.sh
 
 # ignore main pseudocode file
 main.cps
@@ -37,3 +39,8 @@ main.cps
 *.txt
 
 CLAUDE.md
+
+# build output
+web/pkg/
+.rust/
+.vercel

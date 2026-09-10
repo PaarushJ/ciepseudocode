@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Cambridge Pseudocode IDE</title>
+<meta name="description" content="Write and run Cambridge International (9618 / 0478) pseudocode in your browser." />
+<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Fira+Code:wght@400;500;700&display=swap" rel="stylesheet">
+<script>
+(function(){
+  var bg={'dracula':'#282a36','tokyo-night':'#1a1b26','catppuccin-mocha':'#1e1e2e','vscode-dark':'#1e1e1e'};
+  var c='#1e1e1e';
+  try{
+    var s=JSON.parse(localStorage.getItem('cps_settings')||'{}');
+    if(s.theme){document.documentElement.setAttribute('data-theme',s.theme);}
+    document.documentElement.setAttribute('data-ligatures',s.fontLigatures?'on':'off');
+    c=bg[s.theme]||'#1e1e1e';
+  }catch(e){}
+  document.documentElement.style.setProperty('--loader-bg',c);
+})();
+</script>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="app-loader"><div class="ld-ring"></div><div class="ld-text">Loading…</div></div>
+
+<div class="app">
+
+  <!-- ── title bar ───────────────────────────────────────── -->
+  <div class="titlebar">
+    <div class="traffic"><i></i><i></i><i></i></div>
+    <div class="title-center"><b>Cambridge Pseudocode IDE</b> — <span id="title-file">main.cps</span></div>
+  </div>
+
+  <!-- ── workbench ───────────────────────────────────────── -->
+  <div class="workbench">
+
+    <div class="activitybar">
+      <button class="act on" data-view="files" title="Explorer" aria-label="Explorer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h4l1.6 2h7.4A1.5 1.5 0 0 1 20 7.5v11A1.5 1.5 0 0 1 18.5 20h-13A1.5 1.5 0 0 1 4 18.5z"/></svg>
+      </button>
+      <button class="act" data-view="examples" title="Examples" aria-label="Examples">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z"/></svg>
+      </button>
+      <div class="act-spacer"></div>
+      <button class="act" data-view="settings" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
+      </button>
+    </div>
+
+    <div class="sidebar" id="sidebar">
+      <div class="side-head">
+        <span id="side-title">Explorer</span>
+        <div class="acts" id="side-acts"></div>
+      </div>
+      <div class="side-body" id="side-body"></div>
+    </div>
+
+    <div class="main">
+      <div class="tabbar" id="tabbar"></div>
+
+      <div class="editor-wrap">
+        <div class="gutter" id="gutter"></div>
+        <div class="code-area">
+          <div class="code-scroll" id="code-scroll">
+            <div class="code-inner">
+              <pre id="highlight" aria-hidden="true"></pre>
+              <textarea id="code" spellcheck="false" autocapitalize="off" autocorrect="off"
+                        autocomplete="off" wrap="off" aria-label="Pseudocode editor"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="run-float">
+          <button class="btn btn-primary" id="btn-run">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>Run
+          </button>
+          <button class="btn btn-danger" id="btn-stop" style="display:none">
+            <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>Stop
+          </button>
+        </div>
+      </div>
+
+      <div class="splitter" id="splitter"></div>
+
+      <div class="console" id="console">
+        <div class="con-head">
+          <button class="con-tab on">Output</button>
+          <div class="acts">
+            <button class="icon-btn" id="btn-clear" title="Clear output">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 7h14M10 11v6M14 11v6M6 7l1 12.5A1.5 1.5 0 0 0 8.5 21h7a1.5 1.5 0 0 0 1.5-1.5L18 7M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7"/></svg>
+            </button>
+            <button class="icon-btn" id="btn-collapse" title="Toggle panel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="con-body" id="con-body"></div>
+        <div class="con-input off" id="con-input">
+          <span class="chev">›</span>
+          <input id="stdin" placeholder="Type a value and press Enter…" autocomplete="off" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── status bar ──────────────────────────────────────── -->
+  <div class="statusbar" id="statusbar">
+    <span class="st" id="st-state">Ready</span>
+    <span class="st right" id="st-pos">Ln 1, Col 1</span>
+    <span class="st">Cambridge Pseudocode</span>
+    <span class="st click" id="st-theme">Dark</span>
+  </div>
+</div>
+
+<!-- ── settings modal ────────────────────────────────────── -->
+<div class="overlay off" id="overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Settings</h2>
+      <button class="icon-btn" id="btn-close-settings" aria-label="Close settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label for="sel-theme">Colour theme</label>
+        <div class="hint">Applies to the editor, syntax highlighting and the whole interface.</div>
+        <select id="sel-theme">
+          <option value="vscode-dark">Dark (default)</option>
+          <option value="dracula">Dracula</option>
+          <option value="tokyo-night">Tokyo Night</option>
+          <option value="catppuccin-mocha">Catppuccin Mocha</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="sel-font">Editor font</label>
+        <div class="hint">Falls back to your system monospace font if unavailable.</div>
+        <select id="sel-font">
+          <option value="'JetBrains Mono'">JetBrains Mono</option>
+          <option value="'Fira Code'">Fira Code</option>
+          <option value="ui-monospace">System monospace</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Font ligatures</label>
+        <div class="hint">Renders <span class="code-font">&lt;- &lt;= &gt;= &lt;&gt;</span> as joined glyphs.</div>
+        <label class="switch"><input type="checkbox" id="chk-lig" /><span>Enable ligatures</span></label>
+      </div>
+      <div class="field">
+        <label for="sel-size">Font size</label>
+        <select id="sel-size">
+          <option value="12">12 px</option><option value="13.5">13.5 px</option>
+          <option value="15">15 px</option><option value="17">17 px</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="about" id="about"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

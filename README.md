@@ -17,6 +17,43 @@ https://www.cambridge-pseudocode.com/
 - Practice problems (both exam-style and LeetCode-style questions available)
 - Built-in learning resources for the Cambridge pseudocode specification
   
+## Web IDE
+
+This fork adds a browser-based IDE that runs the interpreter client-side via WebAssembly.
+
+```
+web/
+  index.html     interface
+  styles.css     four themes: Dark, Dracula, Tokyo Night, Catppuccin Mocha
+  app.js         editor, syntax highlighting, virtual file system, console
+  examples.js    generated from examples/ by scripts/gen-examples.mjs
+  pkg/           wasm-pack output (built during deploy, not committed)
+```
+
+Features: syntax highlighting driven by the interpreter's own keyword set, a virtual
+file explorer backed by `localStorage`, an interactive console that handles `INPUT`,
+`OPENFILE`/`WRITEFILE` support across files, and the bundled example programs.
+
+### Build locally
+
+Requires Rust and [wasm-pack](https://rustwasm.github.io/wasm-pack/).
+
+```bash
+npm run build          # generates examples.js + compiles wasm into web/pkg
+cd web && python3 -m http.server 8000
+```
+
+Then open <http://localhost:8000>.
+
+### Deploy
+
+`vercel.json` builds the WASM at deploy time and serves `web/` as static files.
+
+### Licence
+
+The interpreter is the work of Faisal Fakih, licensed GPL-3.0-only. The web interface
+in `web/` is part of the same combined work and is distributed under the same licence.
+
 ##  Installation
 
 ### Linux/macOS
