@@ -3,6 +3,8 @@
    Runs the GPL-3.0 Rust interpreter (compiled to WebAssembly).
    ============================================================ */
 import { EXAMPLES } from './examples.js';
+import { LESSONS }  from './lessons.js';
+import { PROBLEMS } from './problems.js';
 
 /* ---------- language surface (mirrors src/Lexer/lexer.rs) ---------- */
 const TYPES = new Set(['INTEGER','REAL','CHAR','STRING','BOOLEAN','DATE','ARRAY']);
@@ -418,7 +420,7 @@ let view = 'files';
 function renderSidebar(){
   const body = $('side-body'), acts = $('side-acts');
   body.innerHTML = ''; acts.innerHTML = '';
-  $('side-title').textContent = view === 'files' ? 'Explorer' : 'Examples';
+  $('side-title').textContent = {files:'Explorer',examples:'Examples',learn:'Learn',practice:'Practice'}[view] || 'Explorer';
 
   if (view === 'files'){
     const add = document.createElement('button');
@@ -442,6 +444,33 @@ function renderSidebar(){
         openFile(f.name);
       });
       body.appendChild(row);
+    }
+  } else if (view === 'learn'){
+    for (const mod of LESSONS){
+      const wrap = groupSection(body, mod.module, mod.items.length);
+      for (const les of mod.items){
+        const it = document.createElement('div');
+        it.className = 'item' + (openDoc === les.id ? ' on' : '');
+        it.innerHTML = `<span class="txt">${esc(les.title)}</span>`;
+        it.addEventListener('click', () => openLesson(mod, les));
+        wrap.appendChild(it);
+      }
+    }
+  } else if (view === 'practice'){
+    const done = store.get('cps_completed', []);
+    for (const level of ['easy','medium','hard']){
+      const items = PROBLEMS.filter(p => p.difficulty === level);
+      if (!items.length) continue;
+      const wrap = groupSection(body, level, items.length);
+      for (const pr of items){
+        const it = document.createElement('div');
+        it.className = 'item' + (openDoc === pr.id ? ' on' : '');
+        const tick = done.includes(pr.id)
+          ? `<svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 13l4 4 10-10"/></svg>` : '';
+        it.innerHTML = `<span class="txt">${esc(pr.title)}</span>${tick}`;
+        it.addEventListener('click', () => openProblem(pr));
+        wrap.appendChild(it);
+      }
     }
   } else {
     for (const group of EXAMPLES){
@@ -549,6 +578,174 @@ $('about').innerHTML =
 })();
 
 window.addEventListener('resize', render);
+
+
+/* ============================================================
+   Learn / Practice panel
+   ============================================================ */
+let openDoc = null;
+const docPanel = $('docpanel'), docBody = $('doc-body');
+
+function groupSection(parent, label, count){
+  const h = document.createElement('div');
+  h.className = 'group-head';
+  h.innerHTML = `<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                 <span>${esc(label)}</span><span class="count">${count}</span>`;
+  parent.appendChild(h);
+  const wrap = document.createElement('div');
+  parent.appendChild(wrap);
+  h.addEventListener('click', () => {
+    h.classList.toggle('collapsed');
+    wrap.style.display = h.classList.contains('collapsed') ? 'none' : '';
+  });
+  return wrap;
+}
+
+function blocks(list){
+  return list.map(b => {
+    if (b.p)    return `<p>${b.p}</p>`;
+    if (b.code) return `<pre class="code-font">${highlight(b.code)}</pre>`;
+    if (b.note) return `<div class="note">${b.note}</div>`;
+    if (b.list) return `<ul>${b.list.map(x => `<li>${x}</li>`).join('')}</ul>`;
+    return '';
+  }).join('');
+}
+
+function showDoc(kicker){
+  $('doc-kicker').textContent = kicker;
+  docPanel.classList.remove('off');
+  docBody.scrollTop = 0;
+  render();
+}
+$('doc-close').addEventListener('click', () => {
+  docPanel.classList.add('off'); openDoc = null; renderSidebar(); render();
+});
+
+/* ---------- lessons ---------- */
+function openLesson(mod, les){
+  openDoc = les.id;
+  docBody.innerHTML =
+    `<h1>${esc(les.title)}</h1>
+     <div class="sub">${esc(mod.module)}</div>
+     ${blocks(les.body)}
+     <div class="doc-actions">
+       <button class="btn btn-primary" id="doc-try">Open example in editor</button>
+     </div>`;
+  $('doc-try').addEventListener('click', () => {
+    const name = uniqueName(les.id + '.cps');
+    files.push({ name, content: les.try });
+    saveFiles(); openFile(name);
+  });
+  showDoc('Lesson'); renderSidebar();
+}
+
+/* ---------- problems ---------- */
+function openProblem(pr){
+  openDoc = pr.id;
+  const done = store.get('cps_completed', []).includes(pr.id);
+  docBody.innerHTML =
+    `<h1>${esc(pr.title)}</h1>
+     <div class="sub">
+       <span class="diff ${pr.difficulty}">${esc(pr.difficulty)}</span>
+       <span>${esc(pr.topic)}</span>
+       ${done ? '<span style="color:var(--green)">• solved</span>' : ''}
+     </div>
+     ${blocks(pr.body)}
+     <div class="doc-actions">
+       <button class="btn btn-ghost"   id="pr-start">Load starter code</button>
+       <button class="btn btn-primary" id="pr-test">Run tests</button>
+     </div>
+     <div class="tests" id="pr-results"></div>
+     <div class="doc-sep"></div>
+     <details class="reveal"><summary>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6"/></svg>Show a hint</summary>
+       <div class="inner"><p>${pr.hint}</p></div></details>
+     <details class="reveal"><summary>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6"/></svg>Reveal the solution</summary>
+       <div class="inner"><pre class="code-font">${highlight(pr.solution)}</pre></div></details>`;
+
+  $('pr-start').addEventListener('click', () => {
+    const name = uniqueName(pr.id + '.cps');
+    files.push({ name, content: pr.starter });
+    saveFiles(); openFile(name);
+  });
+  $('pr-test').addEventListener('click', () => runTests(pr));
+  showDoc('Problem'); renderSidebar();
+}
+
+/* ---------- headless run for test cases ---------- */
+async function runWithInputs(source, inputs){
+  const mod = await loadWasm();
+  let runner;
+  try { runner = new mod.WebRunner(source); }
+  catch (e){ return { error: String(e), lines: [] }; }
+
+  const lines = [];
+  let next = 0, steps = 0;
+  try {
+    while (true){
+      if (++steps > 500000)
+        return { error: 'Program did not finish — check for an endless loop.', lines };
+      const ev = runner.step();
+      if (ev.type === 'Output')          lines.push(ev.value);
+      else if (ev.type === 'NeedsInput') runner.supply_input(next < inputs.length ? inputs[next++] : '');
+      else if (ev.type === 'Done')       return { lines };
+      else if (ev.type === 'Error')      return { error: ev.message, lines };
+    }
+  } finally { try { runner.free(); } catch (e){} }
+}
+
+const tidy = (arr) => {
+  const out = arr.map(l => String(l).replace(/\s+$/, ''));
+  while (out.length && out[out.length-1] === '') out.pop();
+  return out;
+};
+
+async function runTests(pr){
+  const box = $('pr-results');
+  box.innerHTML = `<div class="verdict">Running ${pr.tests.length} tests…</div>`;
+  const source = code.value;
+  const results = [];
+
+  for (const t of pr.tests){
+    const r = await runWithInputs(source, t.inputs);
+    const got = tidy(r.lines), want = tidy(t.expect);
+    results.push({
+      name: t.name,
+      ok: !r.error && got.length === want.length && got.every((l,i) => l === want[i]),
+      error: r.error, got, want
+    });
+  }
+
+  const passed = results.filter(r => r.ok).length;
+  const all = passed === results.length;
+  const anyErr = results.some(r => r.error);
+
+  let html = `<div class="verdict ${all ? 'pass' : (anyErr ? 'err' : 'fail')}">
+      ${all ? `All ${passed} tests passed — nice work.`
+            : `${passed} of ${results.length} tests passed.`}</div>`;
+
+  for (const r of results){
+    const icon = r.ok
+      ? `<svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 13l4 4 10-10"/></svg>`
+      : `<svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+    let detail = '';
+    if (!r.ok){
+      detail = r.error
+        ? `<div class="tdiff"><b>error</b>  ${esc(r.error)}</div>`
+        : `<div class="tdiff"><b>expected</b>  ${esc(r.want.join(' ⏎ ') || '(nothing)')}
+             <br><b>got</b>       ${esc(r.got.join(' ⏎ ')  || '(nothing)')}</div>`;
+    }
+    html += `<div class="test ${r.ok ? 'pass' : 'fail'}">${icon}
+               <div class="tinfo"><div class="tname">${esc(r.name)}</div>${detail}</div></div>`;
+  }
+  box.innerHTML = html;
+
+  const done = store.get('cps_completed', []);
+  if (all && !done.includes(pr.id)){ done.push(pr.id); store.set('cps_completed', done); }
+  if (!all && done.includes(pr.id)) store.set('cps_completed', done.filter(x => x !== pr.id));
+  renderSidebar();
+}
 
 /* ============================================================
    Boot

@@ -45,6 +45,12 @@
       <button class="act" data-view="examples" title="Examples" aria-label="Examples">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z"/></svg>
       </button>
+      <button class="act" data-view="learn" title="Learn" aria-label="Learn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 8.5 3 5.5 12 2.5l9 3z"/><path d="M5.5 10v5.5c0 1.4 2.9 2.5 6.5 2.5s6.5-1.1 6.5-2.5V10"/><path d="M21 5.5v6"/></svg>
+      </button>
+      <button class="act" data-view="practice" title="Practice" aria-label="Practice">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 5.5H6A1.5 1.5 0 0 0 4.5 7v12A1.5 1.5 0 0 0 6 20.5h12a1.5 1.5 0 0 0 1.5-1.5V7A1.5 1.5 0 0 0 18 5.5h-2"/><rect x="8.5" y="3" width="7" height="4" rx="1.2"/><path d="M8.5 12l2 2 4.5-4.5"/></svg>
+      </button>
       <div class="act-spacer"></div>
       <button class="act" data-view="settings" title="Settings" aria-label="Settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
@@ -62,6 +68,7 @@
     <div class="main">
       <div class="tabbar" id="tabbar"></div>
 
+      <div class="editor-row">
       <div class="editor-wrap">
         <div class="gutter" id="gutter"></div>
         <div class="code-area">
@@ -81,6 +88,16 @@
             <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>Stop
           </button>
         </div>
+      </div>
+        <aside class="docpanel off" id="docpanel">
+          <div class="doc-head">
+            <span id="doc-kicker">Lesson</span>
+            <button class="icon-btn" id="doc-close" aria-label="Close panel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+          </div>
+          <div class="doc-body" id="doc-body"></div>
+        </aside>
       </div>
 
       <div class="splitter" id="splitter"></div>
