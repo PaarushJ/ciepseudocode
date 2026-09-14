@@ -37,6 +37,23 @@ Features: syntax highlighting driven by the interpreter's own keyword set, a vir
 file explorer backed by `localStorage`, an interactive console that handles `INPUT`,
 `OPENFILE`/`WRITEFILE` support across files, and the bundled example programs.
 
+### Practice
+
+Three sets of problems, each checked by running the candidate's code through the
+interpreter and matching its output.
+
+- **Exam questions** (22, 151 marks) carry a question label, a mark tally, tags
+  and a model answer. Each test supplies a `setup` — pseudocode declaring the
+  data the question describes — which is prepended to the answer.
+- **Coding problems** (14) are function-implementation tasks. The program is
+  assembled as `buildPrelude` + the candidate's code + `buildHarness`, so only
+  the function body is written.
+- **Warm-ups** (12) are the short problems written for this repository.
+
+"Run tests" shows the worked examples; "Submit" runs 100 randomised cases and is
+the only thing that marks a problem solved. Every model answer in `problems.js`
+is verified against its own submit set before release.
+
 ### Learn
 
 A 26-step course that runs beside the editor, from `OUTPUT "Hello"` through to bubble

@@ -4,8 +4,17 @@
    ============================================================ */
 import { EXAMPLES } from './examples.js';
 import { LESSONS }  from './lessons.js';
-import { PROBLEMS } from './problems.js';
+import { WARMUPS, EXAM, CODE } from './problems.js';
 import { renderMarkdown } from './markdown.js';
+
+/* The three practice sets differ in how a test program is assembled, so each
+   problem carries its kind from here on. */
+const PRACTICE = [
+  { key: 'exam',   label: 'Exam questions',   items: EXAM.map(p    => ({ ...p, kind: 'exam' })) },
+  { key: 'code',   label: 'Coding problems',  items: CODE.map(p    => ({ ...p, kind: 'code' })) },
+  { key: 'warmup', label: 'Warm-ups',         items: WARMUPS.map(p => ({ ...p, kind: 'warmup' })) },
+];
+const ALL_PROBLEMS = PRACTICE.flatMap(g => g.items);
 
 /* ---------- language surface (mirrors src/Lexer/lexer.rs) ---------- */
 const TYPES = new Set(['INTEGER','REAL','CHAR','STRING','BOOLEAN','DATE','ARRAY']);
@@ -22,6 +31,8 @@ const KEYWORDS = new Set(['AND','APPEND','BYREF','BYVAL','CALL','CASE','CLASS','
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const escAttr = (s) => esc(s).replace(/"/g,'&quot;');
+/* the two problem sets spell difficulty differently — Easy vs easy */
+const diffClass = (d) => String(d || '').toLowerCase();
 const store = {
   get(k, fb){ try{ const v = localStorage.getItem(k); return v===null?fb:JSON.parse(v); }catch(e){ return fb; } },
   set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} },
@@ -468,16 +479,17 @@ function renderSidebar(){
     }
   } else if (view === 'practice'){
     const done = store.get('cps_completed', []);
-    for (const level of ['easy','medium','hard']){
-      const items = PROBLEMS.filter(p => p.difficulty === level);
-      if (!items.length) continue;
-      const wrap = groupSection(body, level, items.length);
-      for (const pr of items){
+    for (const group of PRACTICE){
+      const solved = group.items.filter(p => done.includes(p.id)).length;
+      const wrap = groupSection(body, group.label, `${solved}/${group.items.length}`);
+      for (const pr of group.items){
         const it = document.createElement('div');
-        it.className = 'item' + (openDoc === pr.id ? ' on' : '');
+        it.className = 'item prob' + (openDoc === pr.id ? ' on' : '');
         const tick = done.includes(pr.id)
           ? `<svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 13l4 4 10-10"/></svg>` : '';
-        it.innerHTML = `<span class="txt">${esc(pr.title)}</span>${tick}`;
+        const marks = pr.marks ? `<span class="marks">${pr.marks}</span>` : '';
+        it.innerHTML = `<span class="dt ${diffClass(pr.difficulty)}"></span>
+                        <span class="txt">${esc(pr.title)}</span>${marks}${tick}`;
         it.addEventListener('click', () => openProblem(pr));
         wrap.appendChild(it);
       }
@@ -829,37 +841,49 @@ $('lp-jump').addEventListener('change', (e) => openLesson(parseInt(e.target.valu
 window.addEventListener('resize', () => { if (openDoc === 'lesson') renderLessonNav(); });
 
 /* ---------- problems ---------- */
+const starterOf = (pr) => pr.starter ?? pr.starterCode ?? '';
+
 function openProblem(pr){
   openDoc = pr.id;
   const done = store.get('cps_completed', []).includes(pr.id);
+
+  const tags = (pr.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('');
+  const body = pr.kind === 'warmup'
+    ? blocks(pr.body)
+    : `<div class="lesson-doc">${renderMarkdown(pr.question ?? pr.description ?? '')}</div>`;
+
   docBody.innerHTML =
-    `<h1>${esc(pr.title)}</h1>
+    `<h1>${esc(pr.title)}${pr.label ? ` <span class="qlabel">${esc(pr.label)}</span>` : ''}</h1>
      <div class="sub">
-       <span class="diff ${pr.difficulty}">${esc(pr.difficulty)}</span>
-       <span>${esc(pr.topic)}</span>
-       ${done ? '<span style="color:var(--green)">• solved</span>' : ''}
+       <span class="diff ${diffClass(pr.difficulty)}">${esc(pr.difficulty)}</span>
+       ${pr.marks ? `<span class="mk">${pr.marks} mark${pr.marks === 1 ? '' : 's'}</span>` : ''}
+       ${pr.topic ? `<span>${esc(pr.topic)}</span>` : ''}
+       ${done ? '<span class="solved">• solved</span>' : ''}
      </div>
-     ${blocks(pr.body)}
+     ${tags ? `<div class="tags">${tags}</div>` : ''}
+     ${body}
      <div class="doc-actions">
        <button class="btn btn-ghost"   id="pr-start">Load starter code</button>
-       <button class="btn btn-primary" id="pr-test">Run tests</button>
+       <button class="btn btn-ghost"   id="pr-test">Run tests</button>
+       <button class="btn btn-primary" id="pr-submit">Submit</button>
      </div>
      <div class="tests" id="pr-results"></div>
-     <div class="doc-sep"></div>
-     <details class="reveal"><summary>
+     ${pr.hint || pr.solution ? '<div class="doc-sep"></div>' : ''}
+     ${pr.hint ? `<details class="reveal"><summary>
         <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6"/></svg>Show a hint</summary>
-       <div class="inner"><p>${pr.hint}</p></div></details>
-     <details class="reveal"><summary>
+       <div class="inner"><p>${pr.hint}</p></div></details>` : ''}
+     ${pr.solution ? `<details class="reveal"><summary>
         <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6"/></svg>Reveal the solution</summary>
-       <div class="inner"><pre class="code-font">${highlight(pr.solution)}</pre></div></details>`;
+       <div class="inner"><pre class="cps code-font">${highlight(pr.solution)}</pre></div></details>` : ''}`;
 
   $('pr-start').addEventListener('click', () => {
     const name = uniqueName(pr.id + '.cps');
-    files.push({ name, content: pr.starter });
+    files.push({ name, content: starterOf(pr) });
     saveFiles(); openFile(name);
   });
-  $('pr-test').addEventListener('click', () => runTests(pr));
-  showDoc('Problem'); renderSidebar();
+  $('pr-test').addEventListener('click',   () => runTests(pr, 'run'));
+  $('pr-submit').addEventListener('click', () => runTests(pr, 'submit'));
+  showDoc(pr.kind === 'exam' ? 'Exam question' : 'Problem'); renderSidebar();
 }
 
 /* ---------- headless run for test cases ---------- */
@@ -890,50 +914,106 @@ const tidy = (arr) => {
   return out;
 };
 
-async function runTests(pr){
-  const box = $('pr-results');
-  box.innerHTML = `<div class="verdict">Running ${pr.tests.length} tests…</div>`;
-  const source = code.value;
-  const results = [];
+/* Builds the program actually handed to the interpreter. A warm-up runs the
+   candidate's code alone; an exam answer is prefixed with the data the
+   question describes; a coding answer is sandwiched between a prelude and a
+   harness that calls the function and prints the result. */
+function assemble(pr, test, source){
+  if (pr.kind === 'exam') return test.setup + '\n' + source;
+  if (pr.kind === 'code'){
+    return [pr.buildPrelude?.(test), source, pr.buildHarness(test)]
+      .filter(part => part !== undefined)
+      .join('\n\n');
+  }
+  return source;
+}
 
-  for (const t of pr.tests){
-    const r = await runWithInputs(source, t.inputs);
-    const got = tidy(r.lines), want = tidy(t.expect);
-    results.push({
-      name: t.name,
-      ok: !r.error && got.length === want.length && got.every((l,i) => l === want[i]),
-      error: r.error, got, want
-    });
+/* Cases for the two buttons: "Run tests" shows the worked examples, "Submit"
+   runs the full randomised set. */
+function casesFor(pr, mode){
+  if (pr.kind === 'warmup'){
+    return pr.tests.map((t, i) => ({
+      name: t.name, inputs: t.inputs, expect: t.expect, index: i
+    }));
+  }
+  const raw = mode === 'submit' ? pr.generateSubmitTests() : pr.generateTests();
+  return raw.map((t, i) => ({
+    name: t.description || pr.formatInput?.(t) || `Case ${i + 1}`,
+    test: t, inputs: [], expect: t.expected, index: i
+  }));
+}
+
+/* An expected value may be a number while output is always text. */
+const sameLines = (got, want, ordered) => {
+  if (got.length !== want.length) return false;
+  if (ordered) return got.every((l, i) => l === want[i]);
+  const a = [...got].sort(), b = [...want].sort();
+  return a.every((l, i) => l === b[i]);
+};
+
+async function runTests(pr, mode){
+  const box = $('pr-results');
+  const source = code.value;
+  const cases = casesFor(pr, mode);
+  const ordered = pr.orderMatters !== false;
+
+  box.innerHTML = `<div class="verdict">Running ${cases.length} ${mode === 'submit' ? 'submission ' : ''}test${cases.length === 1 ? '' : 's'}…</div>`;
+
+  const results = [];
+  let firstFail = null;
+
+  for (const c of cases){
+    const program = assemble(pr, c.test, source);
+    const r = await runWithInputs(program, c.inputs || []);
+    const got = tidy(r.lines);
+    const want = tidy((c.expect || []).map(String));
+    const ok = !r.error && sameLines(got, want, ordered);
+    results.push({ name: c.name, ok, error: r.error, got, want });
+    if (!ok && !firstFail) firstFail = results[results.length - 1];
+    /* a failing submission is decided — no point running the other 90-odd */
+    if (!ok && mode === 'submit') break;
   }
 
   const passed = results.filter(r => r.ok).length;
-  const all = passed === results.length;
+  const all = passed === cases.length;
   const anyErr = results.some(r => r.error);
 
-  let html = `<div class="verdict ${all ? 'pass' : (anyErr ? 'err' : 'fail')}">
-      ${all ? `All ${passed} tests passed — nice work.`
-            : `${passed} of ${results.length} tests passed.`}</div>`;
-
-  for (const r of results){
-    const icon = r.ok
-      ? `<svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 13l4 4 10-10"/></svg>`
-      : `<svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
-    let detail = '';
-    if (!r.ok){
-      detail = r.error
-        ? `<div class="tdiff"><b>error</b>  ${esc(r.error)}</div>`
-        : `<div class="tdiff"><b>expected</b>  ${esc(r.want.join(' ⏎ ') || '(nothing)')}
-             <br><b>got</b>       ${esc(r.got.join(' ⏎ ')  || '(nothing)')}</div>`;
-    }
-    html += `<div class="test ${r.ok ? 'pass' : 'fail'}">${icon}
-               <div class="tinfo"><div class="tname">${esc(r.name)}</div>${detail}</div></div>`;
+  let html;
+  if (mode === 'submit'){
+    html = `<div class="verdict ${all ? 'pass' : (anyErr ? 'err' : 'fail')}">
+      ${all ? `Accepted — all ${cases.length} tests passed.`
+            : `Rejected on test ${results.length} of ${cases.length}.`}</div>`;
+    if (!all && firstFail) html += testRow(firstFail);
+  } else {
+    html = `<div class="verdict ${all ? 'pass' : (anyErr ? 'err' : 'fail')}">
+        ${all ? `All ${passed} example tests passed — press Submit to check the full set.`
+              : `${passed} of ${results.length} tests passed.`}</div>`;
+    html += results.map(testRow).join('');
   }
   box.innerHTML = html;
 
-  const done = store.get('cps_completed', []);
-  if (all && !done.includes(pr.id)){ done.push(pr.id); store.set('cps_completed', done); }
-  if (!all && done.includes(pr.id)) store.set('cps_completed', done.filter(x => x !== pr.id));
-  renderSidebar();
+  /* only a full submission counts as solving it */
+  if (mode === 'submit'){
+    const done = store.get('cps_completed', []);
+    if (all && !done.includes(pr.id)){ done.push(pr.id); store.set('cps_completed', done); }
+    if (!all && done.includes(pr.id)) store.set('cps_completed', done.filter(x => x !== pr.id));
+    renderSidebar();
+  }
+}
+
+function testRow(r){
+  const icon = r.ok
+    ? `<svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 13l4 4 10-10"/></svg>`
+    : `<svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+  let detail = '';
+  if (!r.ok){
+    detail = r.error
+      ? `<div class="tdiff"><b>error</b>  ${esc(r.error)}</div>`
+      : `<div class="tdiff"><b>expected</b>  ${esc(r.want.join(' ⏎ ') || '(nothing)')}
+           <br><b>got</b>       ${esc(r.got.join(' ⏎ ')  || '(nothing)')}</div>`;
+  }
+  return `<div class="test ${r.ok ? 'pass' : 'fail'}">${icon}
+            <div class="tinfo"><div class="tname">${esc(r.name)}</div>${detail}</div></div>`;
 }
 
 /* ============================================================
