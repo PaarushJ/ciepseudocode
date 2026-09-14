@@ -27,7 +27,7 @@ web/
   styles.css     four themes: Dark, Dracula, Tokyo Night, Catppuccin Mocha
   app.js         editor, syntax highlighting, virtual file system, console
   markdown.js    dependency-free Markdown renderer for the Learn panel
-  lessons.js     the 26-step Learn course, written in Markdown
+  lessons.js     the 27-step Learn course, written in Markdown
   problems.js    practice problems and their test cases
   examples.js    generated from examples/ by scripts/gen-examples.mjs
   pkg/           wasm-pack output (built during deploy, not committed)
@@ -56,7 +56,7 @@ is verified against its own submit set before release.
 
 ### Learn
 
-A 26-step course that runs beside the editor, from `OUTPUT "Hello"` through to bubble
+A 27-step course that runs beside the editor, from `OUTPUT "Hello"` through to bubble
 sort and file handling. Each step is a Markdown document in `lessons.js`, rendered by
 `markdown.js` — no build step and no third-party parser.
 

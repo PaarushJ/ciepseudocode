@@ -655,7 +655,10 @@ let learnStep = (() => {
   return isNaN(n) ? 0 : Math.min(Math.max(n, 0), LESSONS.length - 1);
 })();
 
-const checklistKey = (i) => `cps_checklist_${i}`;
+/* Keyed by title, not position, so inserting a lesson doesn't move a
+   student's ticks onto a different page. */
+const slugify = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const checklistKey = (i) => `cps_checklist_${slugify(LESSONS[i]?.title ?? i)}`;
 
 /* A fenced block is treated as runnable pseudocode when it uses a keyword as
    a statement opener — that keeps the plain "this is what it prints" blocks
@@ -772,7 +775,7 @@ function openLesson(step){
   openDoc = 'lesson';
 
   const les = LESSONS[learnStep];
-  const slug = les.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'lesson';
+  const slug = slugify(les.title) || 'lesson';
 
   docBody.innerHTML =
     `<div class="lesson-doc">${renderMarkdown(les.content)}</div>` +
