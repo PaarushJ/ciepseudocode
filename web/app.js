@@ -5,6 +5,7 @@
 import { EXAMPLES } from './examples.js';
 import { LESSONS }  from './lessons.js';
 import { PROBLEMS } from './problems.js';
+import { renderMarkdown } from './markdown.js';
 
 /* ---------- language surface (mirrors src/Lexer/lexer.rs) ---------- */
 const TYPES = new Set(['INTEGER','REAL','CHAR','STRING','BOOLEAN','DATE','ARRAY']);
@@ -20,6 +21,7 @@ const KEYWORDS = new Set(['AND','APPEND','BYREF','BYVAL','CALL','CASE','CLASS','
 /* ---------- tiny helpers ---------- */
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const escAttr = (s) => esc(s).replace(/"/g,'&quot;');
 const store = {
   get(k, fb){ try{ const v = localStorage.getItem(k); return v===null?fb:JSON.parse(v); }catch(e){ return fb; } },
   set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} },
@@ -446,15 +448,23 @@ function renderSidebar(){
       body.appendChild(row);
     }
   } else if (view === 'learn'){
-    for (const mod of LESSONS){
-      const wrap = groupSection(body, mod.module, mod.items.length);
-      for (const les of mod.items){
-        const it = document.createElement('div');
-        it.className = 'item' + (openDoc === les.id ? ' on' : '');
-        it.innerHTML = `<span class="txt">${esc(les.title)}</span>`;
-        it.addEventListener('click', () => openLesson(mod, les));
-        wrap.appendChild(it);
-      }
+    const reset = document.createElement('button');
+    reset.className = 'icon-btn'; reset.title = 'Start the course again';
+    reset.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 12a8 8 0 1 1 2.6 5.9"/><path d="M4 19v-5h5"/></svg>`;
+    reset.addEventListener('click', () => {
+      for (let i = 0; i < LESSONS.length; i++) localStorage.removeItem(checklistKey(i));
+      openLesson(0);
+    });
+    acts.appendChild(reset);
+
+    for (let i = 0; i < LESSONS.length; i++){
+      const it = document.createElement('div');
+      it.className = 'item step' + (openDoc === 'lesson' && learnStep === i ? ' on' : '');
+      const state = i < learnStep ? 'done' : (i === learnStep ? 'now' : '');
+      it.innerHTML = `<span class="num ${state}">${i < learnStep ? '✓' : i + 1}</span>
+                      <span class="txt">${esc(LESSONS[i].title)}</span>`;
+      it.addEventListener('click', () => openLesson(i));
+      body.appendChild(it);
     }
   } else if (view === 'practice'){
     const done = store.get('cps_completed', []);
@@ -537,6 +547,8 @@ document.querySelectorAll('.act').forEach(btn => {
     $('sidebar').classList.remove('hidden');
     document.querySelectorAll('.act').forEach(a => a.classList.toggle('on', a === btn));
     renderSidebar();
+    /* opening Learn picks the course back up where it was left */
+    if (v === 'learn' && openDoc !== 'lesson') openLesson(learnStep);
   });
 });
 
@@ -611,8 +623,10 @@ function blocks(list){
   }).join('');
 }
 
-function showDoc(kicker){
+function showDoc(kicker, lesson){
   $('doc-kicker').textContent = kicker;
+  $('lesson-bar').classList.toggle('off', !lesson);
+  $('lesson-nav').classList.toggle('off', !lesson);
   docPanel.classList.remove('off');
   docBody.scrollTop = 0;
   render();
@@ -621,23 +635,198 @@ $('doc-close').addEventListener('click', () => {
   docPanel.classList.add('off'); openDoc = null; renderSidebar(); render();
 });
 
-/* ---------- lessons ---------- */
-function openLesson(mod, les){
-  openDoc = les.id;
-  docBody.innerHTML =
-    `<h1>${esc(les.title)}</h1>
-     <div class="sub">${esc(mod.module)}</div>
-     ${blocks(les.body)}
-     <div class="doc-actions">
-       <button class="btn btn-primary" id="doc-try">Open example in editor</button>
-     </div>`;
-  $('doc-try').addEventListener('click', () => {
-    const name = uniqueName(les.id + '.cps');
-    files.push({ name, content: les.try });
-    saveFiles(); openFile(name);
+/* ============================================================
+   Lessons — a 26-step course rendered from Markdown
+   ============================================================ */
+let learnStep = (() => {
+  const n = parseInt(store.get('cps_learn_step', 0), 10);
+  return isNaN(n) ? 0 : Math.min(Math.max(n, 0), LESSONS.length - 1);
+})();
+
+const checklistKey = (i) => `cps_checklist_${i}`;
+
+/* A fenced block is treated as runnable pseudocode when it uses a keyword as
+   a statement opener — that keeps the plain "this is what it prints" blocks
+   from sprouting a Run button. */
+const RUNNABLE = /^\s*(DECLARE|CONSTANT|OUTPUT|PRINT|INPUT|IF|FOR|WHILE|REPEAT|CASE|PROCEDURE|FUNCTION|CALL|OPENFILE|TYPE|CLASS)\b/m;
+
+const COPY_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+const TICK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 13l4 4 8-8"/></svg>`;
+const PLAY_ICON = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>`;
+
+/* Syntax-highlights the pseudocode blocks and hangs Copy (everywhere) and
+   Run (pseudocode only) off each one. */
+function enhanceCodeBlocks(root, slug){
+  root.querySelectorAll('pre[data-code]').forEach((pre, n) => {
+    const src = pre.getAttribute('data-code') || '';
+    const runnable = RUNNABLE.test(src);
+
+    if (runnable){
+      const codeEl = pre.querySelector('code');
+      if (codeEl) codeEl.innerHTML = highlight(src);
+      pre.classList.add('cps');
+    }
+
+    const tools = document.createElement('div');
+    tools.className = 'pre-tools';
+
+    if (runnable){
+      const run = document.createElement('button');
+      run.className = 'pre-btn'; run.title = 'Open this example in the editor';
+      run.innerHTML = PLAY_ICON + '<span>Run</span>';
+      run.addEventListener('click', () => {
+        const name = uniqueName(`${slug}-${n + 1}.cps`);
+        files.push({ name, content: src.endsWith('\n') ? src : src + '\n' });
+        saveFiles(); openFile(name);
+      });
+      tools.appendChild(run);
+    }
+
+    const copy = document.createElement('button');
+    copy.className = 'pre-btn icon'; copy.title = 'Copy code';
+    copy.innerHTML = COPY_ICON;
+    copy.addEventListener('click', () => {
+      navigator.clipboard.writeText(src).then(() => {
+        copy.innerHTML = TICK_ICON; copy.classList.add('copied');
+        setTimeout(() => { copy.innerHTML = COPY_ICON; copy.classList.remove('copied'); }, 1500);
+      }).catch(() => flash('Could not copy to the clipboard'));
+    });
+    tools.appendChild(copy);
+
+    pre.appendChild(tools);
   });
-  showDoc('Lesson'); renderSidebar();
 }
+
+/* Task-list checkboxes are live and their state survives a reload. */
+function wireChecklist(root, step){
+  const boxes = root.querySelectorAll('.tasklist input[type="checkbox"]');
+  if (!boxes.length) return;
+  const key = checklistKey(step);
+  const saved = store.get(key, []);
+  boxes.forEach((box, i) => {
+    box.disabled = false;
+    box.checked = !!saved[i];
+    box.closest('li').classList.toggle('checked', box.checked);
+    box.addEventListener('change', () => {
+      box.closest('li').classList.toggle('checked', box.checked);
+      store.set(key, Array.from(boxes).map(b => b.checked));
+    });
+  });
+}
+
+function renderLessonNav(){
+  const last = LESSONS.length - 1;
+  const prev = $('ls-prev'), next = $('ls-next');
+
+  prev.disabled = learnStep === 0;
+  $('ls-next-label').textContent = learnStep < last ? 'Next' : 'Start over';
+  next.classList.toggle('restart', learnStep >= last);
+
+  /* The dot strip is windowed so it never outgrows the panel. */
+  const dots = $('ls-dots');
+  const fit = Math.max(5, Math.min(LESSONS.length, Math.floor((dots.clientWidth || 140) / 12)));
+  let start = 0, end = last;
+  if (LESSONS.length > fit){
+    start = learnStep - Math.floor(fit / 2);
+    end = start + fit - 1;
+    if (start < 0){ start = 0; end = fit - 1; }
+    if (end > last){ end = last; start = Math.max(0, end - fit + 1); }
+  }
+  dots.classList.toggle('fade-l', start > 0);
+  dots.classList.toggle('fade-r', end < last);
+
+  dots.innerHTML = '';
+  for (let i = start; i <= end; i++){
+    const d = document.createElement('button');
+    d.className = 'dot ' + (i === learnStep ? 'now' : (i < learnStep ? 'done' : ''));
+    d.setAttribute('aria-label', `Go to step ${i + 1}`);
+    d.addEventListener('click', () => openLesson(i));
+    dots.appendChild(d);
+  }
+
+  $('lp-fill').style.width = `${((learnStep + 1) / LESSONS.length) * 100}%`;
+  $('lp-step').textContent = `Step ${learnStep + 1} of ${LESSONS.length}`;
+
+  const jump = $('lp-jump');
+  if (jump.options.length !== LESSONS.length){
+    jump.innerHTML = LESSONS.map((l, i) => `<option value="${i}">${i + 1}. ${esc(l.title)}</option>`).join('');
+  }
+  jump.value = String(learnStep);
+}
+
+function openLesson(step){
+  learnStep = Math.min(Math.max(step, 0), LESSONS.length - 1);
+  store.set('cps_learn_step', learnStep);
+  openDoc = 'lesson';
+
+  const les = LESSONS[learnStep];
+  const slug = les.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'lesson';
+
+  docBody.innerHTML =
+    `<div class="lesson-doc">${renderMarkdown(les.content)}</div>` +
+    (les.solution
+      ? `<details class="reveal solution"><summary>
+           <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6"/></svg>
+           <span class="lbl">Reveal solution</span></summary>
+         <div class="inner"><pre class="cps code-font" data-code="${escAttr(les.solution)}"><code>${highlight(les.solution)}</code></pre></div>
+         </details>`
+      : '');
+
+  enhanceCodeBlocks(docBody, slug);
+  wireChecklist(docBody, learnStep);
+
+  const sol = docBody.querySelector('details.solution');
+  if (sol){
+    sol.addEventListener('toggle', () => {
+      sol.querySelector('.lbl').textContent = sol.open ? 'Hide solution' : 'Reveal solution';
+    });
+  }
+
+  /* the panel has to be on screen before the dot strip can measure itself */
+  showDoc('Lesson', true);
+  renderLessonNav();
+  docBody.scrollTo({ top: 0, behavior: 'smooth' });
+  renderSidebar();
+}
+
+/* ---------- drag the panel wider or narrower ---------- */
+(function(){
+  const grip = $('doc-resize');
+  const MIN = 320, MAX = 1400;
+  const clamp = (w) => Math.max(MIN, Math.min(Math.min(MAX, window.innerWidth - 260), w));
+
+  const saved = parseInt(store.get('cps_doc_width', 0), 10);
+  if (saved) docPanel.style.flexBasis = `${clamp(saved)}px`;
+
+  let dragging = false;
+  grip.addEventListener('mousedown', (e) => {
+    dragging = true; e.preventDefault();
+    grip.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const w = clamp(window.innerWidth - e.clientX);
+    docPanel.style.flexBasis = `${w}px`;
+  });
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    grip.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    store.set('cps_doc_width', parseInt(docPanel.style.flexBasis, 10) || 380);
+    if (openDoc === 'lesson') renderLessonNav();
+    render();
+  });
+})();
+
+$('ls-prev').addEventListener('click', () => openLesson(learnStep - 1));
+$('ls-next').addEventListener('click', () =>
+  openLesson(learnStep >= LESSONS.length - 1 ? 0 : learnStep + 1));
+$('lp-jump').addEventListener('change', (e) => openLesson(parseInt(e.target.value, 10)));
+window.addEventListener('resize', () => { if (openDoc === 'lesson') renderLessonNav(); });
 
 /* ---------- problems ---------- */
 function openProblem(pr){

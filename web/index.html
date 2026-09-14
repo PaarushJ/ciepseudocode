@@ -90,13 +90,34 @@
         </div>
       </div>
         <aside class="docpanel off" id="docpanel">
+          <div class="doc-resize" id="doc-resize" title="Drag to resize"></div>
           <div class="doc-head">
             <span id="doc-kicker">Lesson</span>
             <button class="icon-btn" id="doc-close" aria-label="Close panel">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
             </button>
           </div>
+
+          <div class="lesson-bar off" id="lesson-bar">
+            <div class="lp-track"><div class="lp-fill" id="lp-fill"></div></div>
+            <div class="lp-meta">
+              <span id="lp-step">Step 1 of 1</span>
+              <select id="lp-jump" aria-label="Jump to lesson"></select>
+            </div>
+          </div>
+
           <div class="doc-body" id="doc-body"></div>
+
+          <div class="lesson-nav off" id="lesson-nav">
+            <button class="btn btn-ghost" id="ls-prev">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 6l-6 6 6 6"/></svg>Back
+            </button>
+            <div class="dots" id="ls-dots" aria-hidden="true"></div>
+            <button class="btn btn-primary" id="ls-next">
+              <span id="ls-next-label">Next</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6"/></svg>
+            </button>
+          </div>
         </aside>
       </div>
 

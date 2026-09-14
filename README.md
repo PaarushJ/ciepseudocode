@@ -26,6 +26,9 @@ web/
   index.html     interface
   styles.css     four themes: Dark, Dracula, Tokyo Night, Catppuccin Mocha
   app.js         editor, syntax highlighting, virtual file system, console
+  markdown.js    dependency-free Markdown renderer for the Learn panel
+  lessons.js     the 26-step Learn course, written in Markdown
+  problems.js    practice problems and their test cases
   examples.js    generated from examples/ by scripts/gen-examples.mjs
   pkg/           wasm-pack output (built during deploy, not committed)
 ```
@@ -33,6 +36,20 @@ web/
 Features: syntax highlighting driven by the interpreter's own keyword set, a virtual
 file explorer backed by `localStorage`, an interactive console that handles `INPUT`,
 `OPENFILE`/`WRITEFILE` support across files, and the bundled example programs.
+
+### Learn
+
+A 26-step course that runs beside the editor, from `OUTPUT "Hello"` through to bubble
+sort and file handling. Each step is a Markdown document in `lessons.js`, rendered by
+`markdown.js` — no build step and no third-party parser.
+
+The panel keeps a progress bar and step counter, a numbered sidebar that ticks off
+what you have finished, back/next controls, a jump-to-step menu and a dot strip that
+windows itself to the panel width. Every code block carries a Copy button, and the
+ones that are runnable pseudocode also get a Run button that drops the snippet into
+a new editor tab. Challenge steps add a reveal-solution block and a checklist whose
+ticks are remembered. Your place in the course, the ticked checklists and the width
+you drag the panel to all persist in `localStorage`.
 
 ### Build locally
 
