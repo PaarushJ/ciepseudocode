@@ -64,7 +64,11 @@ Then open <http://localhost:8000>.
 
 ### Deploy
 
-`vercel.json` builds the WASM at deploy time and serves `web/` as static files.
+The Vercel project is connected to this repository, so every push to `main`
+builds and goes live automatically. `vercel.json` compiles the interpreter to
+WebAssembly at deploy time and serves `web/` as static files.
+
+Live at <https://ciepseudocode.vercel.app>.
 
 ### Licence
 
