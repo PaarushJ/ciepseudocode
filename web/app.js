@@ -658,7 +658,7 @@ let learnStep = (() => {
 /* Keyed by title, not position, so inserting a lesson doesn't move a
    student's ticks onto a different page. */
 const slugify = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-const checklistKey = (i) => `cps_checklist_${slugify(LESSONS[i]?.title ?? i)}`;
+const checklistKey = (i) => `cps_checklist_${slugify((LESSONS[i] && LESSONS[i].title) || i)}`;
 
 /* A fenced block is treated as runnable pseudocode when it uses a keyword as
    a statement opener — that keeps the plain "this is what it prints" blocks
@@ -844,7 +844,7 @@ $('lp-jump').addEventListener('change', (e) => openLesson(parseInt(e.target.valu
 window.addEventListener('resize', () => { if (openDoc === 'lesson') renderLessonNav(); });
 
 /* ---------- problems ---------- */
-const starterOf = (pr) => pr.starter ?? pr.starterCode ?? '';
+const starterOf = (pr) => pr.starter != null ? pr.starter : (pr.starterCode != null ? pr.starterCode : '');
 
 function openProblem(pr){
   openDoc = pr.id;
@@ -853,7 +853,7 @@ function openProblem(pr){
   const tags = (pr.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('');
   const body = pr.kind === 'warmup'
     ? blocks(pr.body)
-    : `<div class="lesson-doc">${renderMarkdown(pr.question ?? pr.description ?? '')}</div>`;
+    : `<div class="lesson-doc">${renderMarkdown(pr.question != null ? pr.question : (pr.description != null ? pr.description : ''))}</div>`;
 
   docBody.innerHTML =
     `<h1>${esc(pr.title)}${pr.label ? ` <span class="qlabel">${esc(pr.label)}</span>` : ''}</h1>
@@ -924,7 +924,7 @@ const tidy = (arr) => {
 function assemble(pr, test, source){
   if (pr.kind === 'exam') return test.setup + '\n' + source;
   if (pr.kind === 'code'){
-    return [pr.buildPrelude?.(test), source, pr.buildHarness(test)]
+    return [pr.buildPrelude ? pr.buildPrelude(test) : undefined, source, pr.buildHarness(test)]
       .filter(part => part !== undefined)
       .join('\n\n');
   }
@@ -941,7 +941,7 @@ function casesFor(pr, mode){
   }
   const raw = mode === 'submit' ? pr.generateSubmitTests() : pr.generateTests();
   return raw.map((t, i) => ({
-    name: t.description || pr.formatInput?.(t) || `Case ${i + 1}`,
+    name: t.description || (pr.formatInput && pr.formatInput(t)) || `Case ${i + 1}`,
     test: t, inputs: [], expect: t.expected, index: i
   }));
 }
@@ -1033,6 +1033,11 @@ out('Cambridge Pseudocode IDE — press Run to execute your program.', 'ln-sys')
 // warm the interpreter in the background so the first Run is instant
 loadWasm().catch(() => {});
 
+/* tells the boot watchdog in index.html that we got here */
+window.__cpsBooted = true;
+
 const loader = $('app-loader');
-loader.classList.add('fade');
-setTimeout(() => loader.remove(), 250);
+if (loader){
+  loader.classList.add('fade');
+  setTimeout(() => loader.remove(), 250);
+}

@@ -25,6 +25,8 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+<noscript><div class="boot-msg"><h1>JavaScript is switched off</h1><p>This IDE runs the pseudocode interpreter inside your browser, so it needs JavaScript. Turn it on for this site and reload.</p></div></noscript>
+
 <div id="app-loader"><div class="ld-ring"></div><div class="ld-text">Loading…</div></div>
 
 <div class="app">
@@ -202,5 +204,61 @@
 </div>
 
 <script type="module" src="app.js"></script>
+
+<!-- Boot diagnostics. Deliberately ES5 and inline: it has to run on the very
+     browsers that cannot parse app.js, so it must not use modules, arrow
+     functions, template literals or const/let. Without this, any failure to
+     boot leaves the full-screen #app-loader up for ever and the site simply
+     looks like it "won't open". -->
+<script nomodule>window.__cpsNoModules = true;</script>
+<script>
+(function () {
+  var shown = false;
+
+  function fail(title, detail) {
+    if (shown || window.__cpsBooted) return;
+    shown = true;
+    var loader = document.getElementById('app-loader');
+    if (!loader) return;
+    var d = detail ? String(detail).slice(0, 300) : '';
+    loader.className = 'boot-fail';
+    loader.innerHTML =
+      '<div class="boot-msg">' +
+        '<h1>' + title + '</h1>' +
+        '<p>The editor could not start on this device.</p>' +
+        (d ? '<pre class="boot-detail"></pre>' : '') +
+        '<p class="boot-ua"></p>' +
+        '<button type="button" class="boot-retry">Reload</button>' +
+      '</div>';
+    if (d) loader.querySelector('.boot-detail').textContent = d;
+    loader.querySelector('.boot-ua').textContent = navigator.userAgent;
+    loader.querySelector('.boot-retry').onclick = function () { location.reload(); };
+  }
+
+  if (window.__cpsNoModules) {
+    fail('This browser is too old',
+         'It does not support JavaScript modules. Please update it, or open the site in an up-to-date Chrome, Edge, Safari or Firefox.');
+    return;
+  }
+
+  window.addEventListener('error', function (e) {
+    if (e.target && e.target.tagName === 'SCRIPT') {
+      fail('A file failed to load', (e.target.src || '') + ' could not be downloaded. Check your connection, or whether a network filter is blocking this site.');
+    } else {
+      fail('Something went wrong while starting up', e.message);
+    }
+  }, true);
+
+  window.addEventListener('unhandledrejection', function (e) {
+    fail('Something went wrong while starting up', e.reason && e.reason.message ? e.reason.message : e.reason);
+  });
+
+  // Nothing threw, but we never finished booting either — usually a very slow
+  // or partially blocked network.
+  setTimeout(function () {
+    fail('Still loading', 'The page has not finished starting after 20 seconds. This is usually a slow connection or a network filter blocking part of the site.');
+  }, 20000);
+})();
+</script>
 </body>
 </html>
